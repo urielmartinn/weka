@@ -9,7 +9,7 @@ import java.util.ArrayList;
  * Software para el Rol de Usuario (Cliente).
  * Carga un modelo pre-entrenado y clasifica nuevos textos crudos desde la terminal.
  */
-public class SpamPredictor {
+public class SpamPredictorUser {
 
     public static void main(String[] args) {
         // Validación de argumentos por terminal

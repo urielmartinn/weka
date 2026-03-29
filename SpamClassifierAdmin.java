@@ -13,7 +13,7 @@ import java.util.*;
  * Lee correos de las carpetas "ham" y "spam", divide en train/test,
  * entrena y evalúa, genera summary, calidad y predicciones.
  */
-public class SpamClassifier {
+public class SpamClassifierAdmin {
 
     // ========== PARÁMETROS FIJOS (cámbialos aquí si quieres) ==========
     private static final double RIDGE = 1e-8;          // parámetro de regularización

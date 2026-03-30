@@ -11,7 +11,7 @@ import weka.core.tokenizers.NGramTokenizer;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
-
+import java.util.Random; //No es necesario
 
 /**
  * Clasificador de spam con regresión logística (parámetros fijos).
@@ -21,7 +21,7 @@ import java.util.*;
 public class SpamClassifierAdmin {
 
     // ========== PARÁMETROS FIJOS (cámbialos aquí si quieres) ==========
-    private static final double RIDGE = 1e-8;          // parámetro de regularización
+    private static final double[] RIDGE_VALUES = {1e-8, 1e-6, 1e-4, 1e-2, 1.0, 10.0};  // parámetro de regularización
     private static final int WORDS_TO_KEEP = 1000;     // número de palabras a mantener
     //private static final boolean USE_TFIDF = true;     // true = TF-IDF, false = frecuencias
     private static final double TRAIN_RATIO = 0.8;     // 80% entrenamiento, 20% test
@@ -85,7 +85,7 @@ public class SpamClassifierAdmin {
         testRaw.setClassIndex(testRaw.numAttributes() - 1);
 
         // 5. Configurar filtro de vectorización
-        System.out.println("Configurando vectorización (words=" + WORDS_TO_KEEP + ", tfidf=" + USE_TFIDF + ")...");
+        System.out.println("Configurando vectorización (words=" + WORDS_TO_KEEP + ", TF=" + USE_TF + ", IDF=" + USE_IDF + ")...");
         StringToWordVector filter = new StringToWordVector();
         filter.setLowerCaseTokens(true);
         filter.setWordsToKeep(WORDS_TO_KEEP);
@@ -127,28 +127,67 @@ public class SpamClassifierAdmin {
         System.out.println("====================================================================\n");
 
         // 6. Entrenar regresión logística con FILTERED CLASSIFIER (¡CRÍTICO!)
-        System.out.println("Entrenando regresión logística empaquetada (ridge=" + RIDGE + ")...");
-        Logistic logistic = new Logistic();
-        logistic.setOptions(new String[]{"-R", String.valueOf(RIDGE), "-M", "500"});
-
-        FilteredClassifier fc = new FilteredClassifier();
-        fc.setFilter(filter);
-        fc.setClassifier(logistic);
         
-        // ¡OJO! Entrenamos pasándole los datos EN CRUDO. El fc se encarga de todo.
-        fc.buildClassifier(trainRaw); 
+        System.out.println("RIDGE");
+        System.out.println("10-fold Cross-Validation en Train");
+        
+        double bestRidge = RIDGE_VALUES[0];
+        double bestFMeasure = -1.0;
+
+        // Bucle iterativo para probar cada valor
+        for (double currentRidge : RIDGE_VALUES) {
+            Logistic tempLogistic = new Logistic();
+            tempLogistic.setOptions(new String[]{"-R", String.valueOf(currentRidge), "-M", "500"});
+
+            FilteredClassifier tempFc = new FilteredClassifier();
+            tempFc.setFilter(filter); // Usamos el filtro configurado en el Paso 5
+            tempFc.setClassifier(tempLogistic);
+
+            // Evaluamos usando Cross-Validation sobre el TRAIN
+            Evaluation cvEval = new Evaluation(trainRaw);
+            cvEval.crossValidateModel(tempFc, trainRaw, 10, new Random(RANDOM_SEED));
+
+            // Extraemos la métrica (F-Measure de la clase Spam, que suele ser el índice 1)
+            // Buscamos dinámicamente el índice de la clase "spam"
+            int spamIndex = trainRaw.classAttribute().indexOfValue("spam");
+            double fMeasureSpam = cvEval.fMeasure(spamIndex);
+            double accuracy = cvEval.pctCorrect();
+
+            System.out.println(String.format("Ridge: %1.0e | Accuracy: %5.2f%% | F-Measure (Spam): %.4f", 
+                                              currentRidge, accuracy, fMeasureSpam));
+
+            // Guardamos el mejor
+            if (fMeasureSpam > bestFMeasure) {
+                bestFMeasure = fMeasureSpam;
+                bestRidge = currentRidge;
+            }
+        }
+
+        System.out.println("MEJOR RIDGE ENCONTRADO: " + bestRidge + " (F-Measure: " + bestFMeasure + ")");
+        
+
+        // 6b. Entrenar el modelo FINAL con el MEJOR Ridge usando TODOS los datos de Train
+        System.out.println("Entrenando regresión logística FINAL empaquetada (ridge=" + bestRidge + ")...");
+        Logistic finalLogistic = new Logistic();
+        finalLogistic.setOptions(new String[]{"-R", String.valueOf(bestRidge), "-M", "500"});
+
+        FilteredClassifier finalFc = new FilteredClassifier();
+        finalFc.setFilter(filter);
+        finalFc.setClassifier(finalLogistic);
+        
+        finalFc.buildClassifier(trainRaw);
 
         // 7. Evaluar en test
         System.out.println("Evaluando en test...");
         Evaluation eval = new Evaluation(trainRaw);
         // ¡OJO! Evaluamos pasándole el test EN CRUDO
-        eval.evaluateModel(fc, testRaw); 
+        eval.evaluateModel(finalFc, testRaw); 
         saveQualityReport(outputQuality, eval);
 
         // 8. Generar predicciones sobre test y GUARDAR MODELO PARA EL CLIENTE
         System.out.println("Generando predicciones y guardando modelo...");
-        generatePredictions(testRaw, fc, outputPredictions);
-        weka.core.SerializationHelper.write("spam_classifier_final.model", fc);
+        generatePredictions(testRaw, finalFc, outputPredictions);
+        weka.core.SerializationHelper.write("spam_classifier_final.model", finalFc);
 
         System.out.println("Proceso completado. Archivos generados:");
         System.out.println(" - " + outputSummary);

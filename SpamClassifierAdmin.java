@@ -4,9 +4,14 @@ import weka.filters.Filter;
 import weka.filters.unsupervised.attribute.StringToWordVector;
 import weka.classifiers.Evaluation;
 import weka.classifiers.functions.Logistic;
+import weka.core.stemmers.LovinsStemmer;
+import weka.core.stopwords.Rainbow;
+import weka.classifiers.meta.FilteredClassifier;
+import weka.core.tokenizers.NGramTokenizer;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
+
 
 /**
  * Clasificador de spam con regresión logística (parámetros fijos).
@@ -18,10 +23,18 @@ public class SpamClassifierAdmin {
     // ========== PARÁMETROS FIJOS (cámbialos aquí si quieres) ==========
     private static final double RIDGE = 1e-8;          // parámetro de regularización
     private static final int WORDS_TO_KEEP = 1000;     // número de palabras a mantener
-    private static final boolean USE_TFIDF = true;     // true = TF-IDF, false = frecuencias
+    //private static final boolean USE_TFIDF = true;     // true = TF-IDF, false = frecuencias
     private static final double TRAIN_RATIO = 0.8;     // 80% entrenamiento, 20% test
     private static final long RANDOM_SEED = 12345L;    // para reproducibilidad
-
+    //Aurreprosezamendua
+    private static final boolean USE_STOPWORDS = true; // true = elimina palabras vacías
+    private static final boolean USE_STEMMER = true;   // true = reduce a la raíz (lematización)
+    //Bektorizazioa
+    private static final boolean OUTPUT_WORD_COUNTS = true; // true = frecuencias, false = binario
+    private static final boolean USE_TF = true;             // true = aplica logaritmo a las frecuencias
+    private static final boolean USE_IDF = true;            // true = penaliza palabras comunes
+    private static final boolean USE_BIGRAMS = false;       // true = unigramas y bigramas (ej. "free", "free money")
+    
     // ========== CLASE AUXILIAR PARA CORREOS ==========
     private static class Email {
         String text;
@@ -71,39 +84,78 @@ public class SpamClassifierAdmin {
         trainRaw.setClassIndex(trainRaw.numAttributes() - 1);
         testRaw.setClassIndex(testRaw.numAttributes() - 1);
 
-        // 5. Configurar filtro de vectorización (con parámetros fijos)
-        System.out.println("Aplicando vectorización (words=" + WORDS_TO_KEEP + ", tfidf=" + USE_TFIDF + ")...");
+        // 5. Configurar filtro de vectorización
+        System.out.println("Configurando vectorización (words=" + WORDS_TO_KEEP + ", tfidf=" + USE_TFIDF + ")...");
         StringToWordVector filter = new StringToWordVector();
         filter.setLowerCaseTokens(true);
         filter.setWordsToKeep(WORDS_TO_KEEP);
-        filter.setIDFTransform(USE_TFIDF);
-        filter.setOutputWordCounts(!USE_TFIDF); // si no TF-IDF, usar frecuencias
-        filter.setInputFormat(trainRaw);
-        Instances trainVec = Filter.useFilter(trainRaw, filter);
-        Instances testVec = Filter.useFilter(testRaw, filter);
 
-        // 6. Entrenar regresión logística con ridge fijo
-        System.out.println("Entrenando regresión logística (ridge=" + RIDGE + ")...");
-        Logistic classifier = new Logistic();
-        classifier.setOptions(new String[]{"-R", String.valueOf(RIDGE), "-M", "500"});
-        classifier.buildClassifier(trainVec);
+        // Configuramos la representación espacial (Binario, TF, o TF-IDF)
+        filter.setOutputWordCounts(OUTPUT_WORD_COUNTS);
+        filter.setTFTransform(USE_TF);
+        filter.setIDFTransform(USE_IDF);
+
+        // APLICANDO PREPROCESAMIENTO NLP ---
+        if (USE_STOPWORDS) {
+            System.out.println(" -> Aplicando filtro de Stopwords (Rainbow)...");
+            filter.setStopwordsHandler(new Rainbow());
+        }
+        if (USE_STEMMER) {
+            System.out.println(" -> Aplicando Stemmer (LovinsStemmer)...");
+            filter.setStemmer(new LovinsStemmer());
+        }
+
+        if (USE_BIGRAMS) {
+            System.out.println(" -> Aplicando Tokenizador de Bigramas...");
+            NGramTokenizer tokenizer = new NGramTokenizer();
+            tokenizer.setNGramMinSize(1); // Unigramas
+            tokenizer.setNGramMaxSize(2); // Bigramas
+            filter.setTokenizer(tokenizer);
+        }
+
+        // TABLA DIMENSIONALIDAD (Corregida)
+        System.out.println("\n=== TAULA: Datuen dimentsionalitatearen eboluzioa ===");
+        System.out.println(String.format("%-35s | %-12s | %-12s", "Prozesua / Egoera", "Instantziak", "Atributuak"));
+        System.out.println(String.format("%-35s | %-12d | %-12d", 
+            "1. Datu gordinak (Raw Text)", trainRaw.numInstances(), trainRaw.numAttributes()));
+        
+        filter.setInputFormat(trainRaw); // Aplicar temporalmente solo para medir
+        Instances trainTabular = Filter.useFilter(trainRaw, filter);
+
+        System.out.println(String.format("%-35s | %-12d | %-12d", 
+            "2. Bektorizazioa (BoW/TF-IDF)", trainTabular.numInstances(), trainTabular.numAttributes()));
+        System.out.println("====================================================================\n");
+
+        // 6. Entrenar regresión logística con FILTERED CLASSIFIER (¡CRÍTICO!)
+        System.out.println("Entrenando regresión logística empaquetada (ridge=" + RIDGE + ")...");
+        Logistic logistic = new Logistic();
+        logistic.setOptions(new String[]{"-R", String.valueOf(RIDGE), "-M", "500"});
+
+        FilteredClassifier fc = new FilteredClassifier();
+        fc.setFilter(filter);
+        fc.setClassifier(logistic);
+        
+        // ¡OJO! Entrenamos pasándole los datos EN CRUDO. El fc se encarga de todo.
+        fc.buildClassifier(trainRaw); 
 
         // 7. Evaluar en test
         System.out.println("Evaluando en test...");
-        Evaluation eval = new Evaluation(trainVec);
-        eval.evaluateModel(classifier, testVec);
+        Evaluation eval = new Evaluation(trainRaw);
+        // ¡OJO! Evaluamos pasándole el test EN CRUDO
+        eval.evaluateModel(fc, testRaw); 
         saveQualityReport(outputQuality, eval);
 
-        // 8. Generar predicciones sobre test
-        System.out.println("Generando predicciones...");
-        generatePredictions(testVec, classifier, outputPredictions);
+        // 8. Generar predicciones sobre test y GUARDAR MODELO PARA EL CLIENTE
+        System.out.println("Generando predicciones y guardando modelo...");
+        generatePredictions(testRaw, fc, outputPredictions);
+        weka.core.SerializationHelper.write("spam_classifier_final.model", fc);
 
         System.out.println("Proceso completado. Archivos generados:");
         System.out.println(" - " + outputSummary);
         System.out.println(" - " + outputQuality);
         System.out.println(" - " + outputPredictions);
+        System.out.println(" - spam_classifier_final.model (¡Listo para el cliente!)");
     }
-
     // ==================== CARGA DE CORREOS ====================
     private static void loadEmails(String folder, String label, List<Email> list) throws Exception {
         File dir = new File(folder);
@@ -279,7 +331,7 @@ public class SpamClassifierAdmin {
     }
 
     // ==================== GENERAR PREDICCIONES ====================
-    private static void generatePredictions(Instances testData, Logistic model, String outFile) throws Exception {
+    private static void generatePredictions(Instances testData, weka.classifiers.Classifier model, String outFile) throws Exception {
         try (BufferedWriter w = new BufferedWriter(new FileWriter(outFile))) {
             for (int i = 0; i < testData.numInstances(); i++) {
                 double pred = model.classifyInstance(testData.instance(i));

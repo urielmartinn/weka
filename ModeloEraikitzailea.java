@@ -37,9 +37,9 @@ public class ModeloEraikitzailea {
 
             Instances dataGuztia = createInstances(emailGuztiak);
 
-            System.out.println("2. Iragazki zentralizatua eskatuz NLPFilterFactory-ri...");
+            System.out.println("2. Iragazki zentralizatua eskatuz IragazkiSortzaileari...");
             FilteredClassifier modelFinala = new FilteredClassifier();
-            modelFinala.setFilter(NLPFilterFactory.createSpamFilter(WordsToKeepOnena));
+            modelFinala.setFilter(IragazkiSortzailea.sortuSpamIragazkia(WordsToKeepOnena));
 
             Logistic logisticFinala = new Logistic();
             logisticFinala.setOptions(new String[]{"-R", String.valueOf(RidgeOnena), "-M", "500"});

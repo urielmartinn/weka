@@ -15,8 +15,8 @@ import java.util.*;
 /**
  * Clase principal para el rol de Data Scientist (Administrador).
  * Implementa un pipeline completo de Machine Learning para clasificar correos en Spam o Ham.
- * * Se encarga de:
- * 1. Carga y análisis de datos (generación de summary).
+ * Se encarga de:
+ * 1. Carga de datos.
  * 2. División Hold-out estratificada (Train/Test).
  * 3. Preprocesamiento NLP (Stopwords, Stemming) y Vectorización (BoW, TF-IDF, N-Gramas).
  * 4. Parameter Fine-Tuning (Grid Search mediante 10-fold Cross-Validation).
@@ -93,7 +93,6 @@ public class SpamClassifierAdmin {
         // Leer carpetas desde argumentos o usar valores por defecto
         String hamFolder = (args.length > 0) ? args[0] : "ham";
         String spamFolder = (args.length > 1) ? args[1] : "spam";
-        String outputSummary = "summary.txt";
         String outputQuality = "quality.txt";
         String outputPredictions = "predictions.txt";
 
@@ -104,11 +103,7 @@ public class SpamClassifierAdmin {
         loadEmails(spamFolder, "spam", allEmails);
         System.out.println("Total correos cargados: " + allEmails.size());
 
-        // 2. Generar resumen
-        System.out.println("Generando resumen...");
-        generateSummary(allEmails, outputSummary);
-
-        // 3. Dividir en entrenamiento y test
+        // 2. Dividir en entrenamiento y test
         System.out.println("Dividiendo en train/test (ratio=" + TRAIN_RATIO + ")...");
         List<Email> trainEmails = new ArrayList<>();
         List<Email> testEmails = new ArrayList<>();
@@ -116,13 +111,13 @@ public class SpamClassifierAdmin {
         System.out.println("Entrenamiento: " + trainEmails.size() + " correos");
         System.out.println("Test: " + testEmails.size() + " correos");
 
-        // 4. Crear datasets Weka (texto crudo)
+        // 3. Crear datasets Weka (texto crudo)
         Instances trainRaw = createInstances(trainEmails, true);
         Instances testRaw = createInstances(testEmails, true); // con etiquetas para evaluación
         trainRaw.setClassIndex(trainRaw.numAttributes() - 1);
         testRaw.setClassIndex(testRaw.numAttributes() - 1);
 
-        // 5. Configurar filtro de vectorización
+        // 4. Configurar filtro de vectorización
         System.out.println("Configurando vectorización (words=" + WORDS_TO_KEEP + ", TF=" + USE_TF + ", IDF=" + USE_IDF + ")...");
         StringToWordVector filter = new StringToWordVector();
         filter.setLowerCaseTokens(true);
@@ -164,7 +159,7 @@ public class SpamClassifierAdmin {
             "2. Bektorizazioa (BoW/TF-IDF)", trainTabular.numInstances(), trainTabular.numAttributes()));
         System.out.println("====================================================================\n");
 
-        // 6. Entrenar regresión logística con FILTERED CLASSIFIER (¡CRÍTICO!)
+        // 5. Entrenar regresión logística con FILTERED CLASSIFIER (¡CRÍTICO!)
         System.out.println("RIDGE");
         System.out.println("10-fold Cross-Validation en Train");
         
@@ -177,7 +172,7 @@ public class SpamClassifierAdmin {
             tempLogistic.setOptions(new String[]{"-R", String.valueOf(currentRidge), "-M", "500"});
 
             FilteredClassifier tempFc = new FilteredClassifier();
-            tempFc.setFilter(filter); // Usamos el filtro configurado en el Paso 5
+            tempFc.setFilter(filter); // Usamos el filtro configurado en el Paso 4
             tempFc.setClassifier(tempLogistic);
 
             // Evaluamos usando Cross-Validation sobre el TRAIN
@@ -202,7 +197,7 @@ public class SpamClassifierAdmin {
 
         System.out.println("MEJOR RIDGE ENCONTRADO: " + bestRidge + " (F-Measure: " + bestFMeasure + ")");
 
-        // 6b. Entrenar el modelo FINAL con el MEJOR Ridge usando TODOS los datos de Train
+        // 6. Entrenar el modelo FINAL con el MEJOR Ridge usando TODOS los datos de Train
         System.out.println("Entrenando regresión logística FINAL empaquetada (ridge=" + bestRidge + ")...");
         Logistic finalLogistic = new Logistic();
         finalLogistic.setOptions(new String[]{"-R", String.valueOf(bestRidge), "-M", "500"});
@@ -226,7 +221,6 @@ public class SpamClassifierAdmin {
         weka.core.SerializationHelper.write("spam_classifier_final.model", finalFc);
 
         System.out.println("Proceso completado. Archivos generados:");
-        System.out.println(" - " + outputSummary);
         System.out.println(" - " + outputQuality);
         System.out.println(" - " + outputPredictions);
         System.out.println(" - spam_classifier_final.model (¡Listo para el cliente!)");
@@ -298,73 +292,6 @@ public class SpamClassifierAdmin {
         text = text.toLowerCase();
         text = text.replaceAll("\\s+", " ").trim();
         return text;
-    }
-
-    /**
-     * Analiza el corpus completo de correos y genera un informe cuantitativo en un archivo de texto.
-     * Reporta instancias, fechas límite, ratios de desbalanceo y autores más frecuentes.
-     *
-     * @param emails  Lista completa de correos cargados.
-     * @param outFile Ruta del archivo de salida (ej. "summary.txt").
-     * @throws IOException Si hay error al escribir el archivo.
-     */
-    private static void generateSummary(List<Email> emails, String outFile) throws IOException {
-        List<Email> ham = new ArrayList<>();
-        List<Email> spam = new ArrayList<>();
-        for (Email e : emails) {
-            if (e.label.equals("ham")) ham.add(e);
-            else spam.add(e);
-        }
-
-        ham.sort(Comparator.comparing(e -> e.date, Comparator.nullsLast(Comparator.naturalOrder())));
-        spam.sort(Comparator.comparing(e -> e.date, Comparator.nullsLast(Comparator.naturalOrder())));
-
-        String authorHam = mostFrequentAuthor(ham);
-        String authorSpam = mostFrequentAuthor(spam);
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-
-        try (BufferedWriter w = new BufferedWriter(new FileWriter(outFile))) {
-            w.write("Legitimate\n");
-            w.write("----------\n");
-            w.write("- Owner: " + authorHam + "\n");
-            w.write("- Total number: " + ham.size() + " emails\n");
-            w.write("- Date of first email: " + (ham.isEmpty() ? "N/A" : sdf.format(ham.get(0).date)) + "\n");
-            w.write("- Date of last email: " + (ham.isEmpty() ? "N/A" : sdf.format(ham.get(ham.size()-1).date)) + "\n");
-            w.write("- Similars deletion: No\n");
-            w.write("- Encoding: No\n");
-            w.write("\n\n");
-            w.write("Spam\n");
-            w.write("----\n");
-            w.write("- Owner: " + authorSpam + "\n");
-            w.write("- Total number: " + spam.size() + " emails\n");
-            w.write("- Date of first email: " + (spam.isEmpty() ? "N/A" : sdf.format(spam.get(0).date)) + "\n");
-            w.write("- Date of last email: " + (spam.isEmpty() ? "N/A" : sdf.format(spam.get(spam.size()-1).date)) + "\n");
-            w.write("- Similars deletion: No\n");
-            w.write("- Encoding: No\n");
-            w.write("\n");
-            int ratio = (spam.size() == 0) ? 0 : (int) Math.round((double) ham.size() / spam.size());
-            w.write("Spam:Legitimate rate = 1:" + ratio + "\n");
-            w.write("Total number of emails (legitimate + spam): " + emails.size() + "\n");
-        }
-    }
-
-    /**
-     * Busca el nombre de autor que más se repite en una lista de correos.
-     *
-     * @param emails Lista de correos a analizar.
-     * @return El string con el nombre del autor más frecuente, o "desconocido" si no hay datos.
-     */
-    private static String mostFrequentAuthor(List<Email> emails) {
-        if (emails.isEmpty()) return "desconocido";
-        Map<String, Integer> freq = new HashMap<>();
-        for (Email e : emails) {
-            if (e.author != null)
-                freq.put(e.author, freq.getOrDefault(e.author, 0) + 1);
-        }
-        return freq.entrySet().stream()
-                .max(Map.Entry.comparingByValue())
-                .map(Map.Entry::getKey)
-                .orElse("desconocido");
     }
 
     /**

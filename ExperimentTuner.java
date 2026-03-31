@@ -21,8 +21,8 @@ import java.util.*;
 public class ExperimentTuner {
 
     // ========== ESPACIO DE BÚSQUEDA (Grid Search) ==========
-    private static final double[] RIDGE_VALUES = {10.0};
-    private static final int[] WORDS_TO_KEEP_VALUES = {1000};
+    private static final double[] RIDGE_VALUES = {1e-8, 1e-6, 1e-4, 1e-2, 1.0, 10.0};
+    private static final int[] WORDS_TO_KEEP_VALUES = {100, 250, 500, 1000};
     
     // Diferentes esquemas de vectorización a evaluar empíricamente
     private enum VectorizationType { BINARY, TF, TF_IDF, TF_IDF_BIGRAMS }

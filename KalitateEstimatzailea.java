@@ -17,12 +17,30 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
-
+/**
+ * SPAM sailkatzailearen kalitatea estimatzeko eta ebaluatzeko klase nagusia.
+ * <p>
+ * Klase honek datu-multzo osoa kargatzen du, Hold-out (%80 Train / %20 Test) 
+ * partizio estratifikatua egiten du eta Logistic Regression modeloa entrenatzen 
+ * zein ebaluatzen du (Test-blind printzipioa errespetatuz FilteredClassifier bidez). 
+ * Azkenik, ebaluazioaren metrika nagusiak testu-fitxategi batean gordetzen ditu.
+ * </p>
+ */
 public class KalitateEstimatzailea {
 
+    /** Entrenamendu-partizioaren tamaina (%80). */
     private static final double TRAIN_RATIOA = 0.8;
+    
+    /** Partizioak egiterakoan ausazkotasuna kontrolatzeko hazia (erreproduzigarritasuna bermatzeko). */
     private static final long AUSAZKO_HAZIA = 12345L;
 
+    /**
+     * Programa nagusiaren sarrera-puntua.
+     *
+     * @param args Komando-lerroko argumentuak. Bi argumentu behar dira:
+     * args[0]: 'ham' mezuak dituen karpetaren ibilbidea.
+     * args[1]: 'spam' mezuak dituen karpetaren ibilbidea.
+     */
     public static void main(String[] args) {
         if (args.length != 2) {
             System.err.println("Errorea!");
@@ -75,6 +93,15 @@ public class KalitateEstimatzailea {
         }
     }
 
+    /**
+     * Ebaluazioaren emaitzak eta metrikak testu-fitxategi batean idazten ditu.
+     *
+     * @param artxiboIzena Sortuko den txostenaren fitxategi-izena.
+     * @param ebaluazioa2  Weka-ko Evaluation objektua, ebaluazioaren emaitzak dituena.
+     * @param ridge        Erabilitako Ridge (erregularizazioa) hiperparametroaren balioa.
+     * @param hitzak       Hiztegian mantendu diren hitz kopurua (wordsToKeep).
+     * @throws Exception Fitxategia idazterakoan arazoren bat badago.
+     */
     private static void gordeKalitateTxostena(String artxiboIzena, Evaluation ebaluazioa2, double ridge, int hitzak) throws Exception {
         try (BufferedWriter w = new BufferedWriter(new FileWriter(artxiboIzena))) {
             w.write("=== SPAM SAILKATZAILEAREN KALITATE-ESTIMAZIOA ===\n");
@@ -90,7 +117,15 @@ public class KalitateEstimatzailea {
         }
     }
 
-  
+    /**
+     * Karpeta zehatz bateko .txt fitxategi guztiak irakurtzen ditu, testua garbitzen du
+     * eta zerrenda batean gordetzen ditu emandako etiketarekin batera.
+     *
+     * @param karpeta Mezuen testu-fitxategiak dituen direktorioaren ibilbidea.
+     * @param etiketa Klasearen etiketa ("ham" edo "spam").
+     * @param list    Garbitutako mezuak eta haien etiketak gordeko diren zerrenda.
+     * @throws Exception Fitxategiak irakurtzerakoan arazoren bat badago.
+     */
     private static void emailakKargatu(String karpeta, String etiketa, List<String[]> list) throws Exception {
         File ibilbidea = new File(karpeta);
         if (!ibilbidea.exists() || !ibilbidea.isDirectory()) return;
@@ -106,12 +141,27 @@ public class KalitateEstimatzailea {
         }
     }
 
+    /**
+     * Testu gordina garbitzen du iragarpenak egiteko edo entrenatzeko prest egoteko.
+     * Adierazpen erregularrak (Regex) erabiltzen ditu zaborra (URLak, e-mailak, zenbakiak...) ezabatzeko.
+     *
+     * @param testua Garbitu behar den jatorrizko testua.
+     * @return Testu garbia eta normalizatua (minuskulatan).
+     */
     private static String testuaGarbitu(String testua) {
         return testua.replaceAll("\\S+@\\S+\\.\\S+", " ").replaceAll("(http|https)://\\S+", " ")
                    .replaceAll("\\b\\d+\\b", " ").replaceAll("[^a-zA-Záéíóúñü' ]", " ")
                    .toLowerCase().replaceAll("\\s+", " ").trim();
     }
 
+    /**
+     * Datu-multzo osoa bi partiziotan banatzen du: Entrenamendua (Train) eta Testa (Test).
+     * Banaketa estratifikatua da, hau da, 'ham' eta 'spam' proportzioak mantentzen ditu.
+     *
+     * @param dena  Datu-multzo osoa (mezu garbiak eta etiketak).
+     * @param train Entrenamendu-datuak gordeko diren zerrenda.
+     * @param test  Test-datuak (ebaluaziorako) gordeko diren zerrenda.
+     */
     private static void splitData(List<String[]> dena, List<String[]> train, List<String[]> test) {
         List<String[]> hamList = new ArrayList<>();
         List<String[]> spamList = new ArrayList<>();
@@ -131,6 +181,13 @@ public class KalitateEstimatzailea {
         test.addAll(spamList.subList(spamTrainSize, spamList.size()));
     }
 
+    /**
+     * Karaktere-kateen zerrenda bat Weka liburutegiak onartzen duen {@link Instances} 
+     * objektu batean bihurtzen du.
+     *
+     * @param emailak Mezu garbien eta haien etiketen zerrenda.
+     * @return Weka-rako prestatutako 'Instances' datu-multzoa.
+     */
     private static Instances createInstances(List<String[]> emailak) {
         ArrayList<Attribute> atts = new ArrayList<>();
         atts.add(new Attribute("text", (ArrayList<String>) null));

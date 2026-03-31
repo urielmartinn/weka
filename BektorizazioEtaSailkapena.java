@@ -24,7 +24,7 @@ import java.util.*;
  * </p>
  * 
  */
-public class bektorizazioEtaSailkapena {
+public class BektorizazioEtaSailkapena {
 
     // ---------- Parametro espazioa (Grid Search) ----------
     /** Probarikoko ridge balioak (L2 erregulazioa). */

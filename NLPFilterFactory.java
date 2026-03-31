@@ -6,29 +6,38 @@ import weka.core.stopwords.Rainbow;
 import weka.core.tokenizers.WordTokenizer;
 
 /**
- * Clase utilitaria para centralizar la configuración del procesamiento de lenguaje natural (NLP).
- * Aplica el principio DRY (Don't Repeat Yourself).
+ * Prozesamendu linguistiko naturalerako (NLP) iragazkiak konfiguratzeko
+ * klase utilitarioa. DRY (Don't Repeat Yourself) printzipioa aplikatzen du.
+ * 
  */
-public class NLPFilterFactory {
+public class IragazkiSortzailea {
 
     /**
-     * Devuelve el filtro configurado con los parámetros empíricamente óptimos.
-     * @param wordsToKeep El tamaño máximo del diccionario.
-     * @return StringToWordVector configurado con TF-IDF, minúsculas, stemmer y stopwords.
+     * Iragazkia itzultzen du, esperimentuetan optimotzat jo diren
+     * parametroekin konfiguratuta.
+     * <p>
+     * Konfigurazio honek TF‑IDF erabiltzen du, letra xeheak,
+     * stopwords kentzea (Rainbow), Lovins stemmer-a eta tokenizatzaile
+     * sinplea (hitzen araberakoa). WordsToKeep parametroak hiztegiaren
+     * tamaina muga ezartzen du.
+     * </p>
+     *
+     * @param wordsToKeep Hiztegian mantenduko diren hitz kopuru maximoa
+     * @return StringToWordVector iragazkia, spam detekziorako prestatuta
      */
-    public static StringToWordVector createSpamFilter(int wordsToKeep) {
-        StringToWordVector filter = new StringToWordVector();
-        filter.setLowerCaseTokens(true);
-        filter.setWordsToKeep(wordsToKeep);
-        filter.setStopwordsHandler(new Rainbow());
-        filter.setStemmer(new LovinsStemmer());
-        filter.setTokenizer(new WordTokenizer());
+    public static StringToWordVector sortuSpamIragazkia(int wordsToKeep) {
+        StringToWordVector iragazkia = new StringToWordVector();
+        iragazkia.setLowerCaseTokens(true);
+        iragazkia.setWordsToKeep(wordsToKeep);
+        iragazkia.setStopwordsHandler(new Rainbow());
+        iragazkia.setStemmer(new LovinsStemmer());
+        iragazkia.setTokenizer(new WordTokenizer());
         
-        // Configuración TF-IDF
-        filter.setOutputWordCounts(true);
-        filter.setTFTransform(true);
-        filter.setIDFTransform(true);
+        // TF‑IDF konfigurazioa
+        iragazkia.setOutputWordCounts(true);
+        iragazkia.setTFTransform(true);
+        iragazkia.setIDFTransform(true);
         
-        return filter;
+        return iragazkia;
     }
 }

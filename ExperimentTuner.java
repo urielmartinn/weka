@@ -15,258 +15,321 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 /**
- * Clase 1: Encargada de la carga de datos, limpieza, partición (Hold-out) 
- * y optimización de hiperparámetros (Grid Search).
+ * Klase honek esperimentazioa kudeatzen du, bektorizazio mota,
+ * hiztegiaren tamaina (WordsToKeep) eta erregresio logistikoaren
+ * ridge parametroa optimizatzeko.
+ * <p>
+ * Grid Search erabiliz, 10-fold cross-validation egiten du eta
+ * F‑Measure (spam) metrika hobetzen duen konfigurazioa bilatzen du.
+ * </p>
+ * 
  */
-public class ExperimentTuner {
+public class bektorizazioEtaSailkapena {
 
-    // ========== ESPACIO DE BÚSQUEDA (Grid Search) ==========
-    private static final double[] RIDGE_VALUES = {1e-8, 1e-6, 1e-4, 1e-2, 1.0, 10.0};
-    private static final int[] WORDS_TO_KEEP_VALUES = {100, 250, 500, 1000};
+    // ---------- Parametro espazioa (Grid Search) ----------
+    /** Probarikoko ridge balioak (L2 erregulazioa). */
+    private static final double[] RIDGE_BALIOAK = {1e-8, 1e-6, 1e-4, 1e-2, 1.0, 10.0};
+    /** Hiztegian mantenduko diren hitz kopuru posibleak. */
+    private static final int[] WORDS_TO_KEEP_BALIOAK = {100, 250, 500, 1000};
     
-    // Diferentes esquemas de vectorización a evaluar empíricamente
-    private enum VectorizationType { BINARY, TF, TF_IDF, TF_IDF_BIGRAMS }
+    /** Bektorizazio mota ezberdinak: binarioa, TF, TF‑IDF eta TF‑IDF bigramaekin. */
+    private enum BektorizazioMota { BINARY, TF, TF_IDF, TF_IDF_BIGRAMS }
 
+    /** Trebakuntzarako datuen portzentajea (gainontzekoa test). */
     private static final double TRAIN_RATIO = 0.8;
-    private static final long RANDOM_SEED = 12345L;
+    /** Aleatoriotasuna errepikagarria izateko hazi finkoa. */
+    private static final long RANDOM_HAZIA = 12345L;
 
-    public static class ExperimentConfig {
+    /**
+     * Konfigurazio optimoaren emaitzak biltzen dituen klase laguntzailea.
+     * <p>
+     * Atributuek trebakuntza eta test instantziak, hiztegiaren tamaina,
+     * ridge balioa eta aukeratutako bektorizazio mota gordetzen dute.
+     * </p>
+     */
+    public static class ExperimentoKonfigurazioa {
         public Instances trainRaw;
         public Instances testRaw;
-        public StringToWordVector bestFilter;
-        public double bestRidge;
-        public int bestWordsToKeep;
-        public VectorizationType bestVecType;
-        public int finalDictionarySize;
+        public StringToWordVector iragazkiOnena;
+        public double ridgeOnena;
+        public int wordsToKeepOnena;
+        public BektorizazioMota bektorizazioMotaOnena;
+        public int hiztegiHitzKopurua;
     }
 
+    /**
+     * Posta elektroniko baten informazioa gordetzeko klase laguntzailea.
+     */
     private static class Email {
-        String text;
-        String label;
-        String author;
-        Date date;
+        String testua;        // mezuaren edukia
+        String mota;       // "ham" edo "spam"
+        String egilea;      // fitxategi-izenetik ateratako egilea
+        Date date;          // fitxategi-izenetik ateratako data
 
-        Email(String text, String label, String author, Date date) {
-            this.text = text;
-            this.label = label;
-            this.author = author;
+        Email(String testua, String mota, String egilea, Date date) {
+            this.testua = testua;
+            this.mota = mota;
+            this.egilea = egilea;
             this.date = date;
         }
     }
 
-    public ExperimentConfig runTuningPipeline(String hamFolder, String spamFolder) throws Exception {
-        ExperimentConfig config = new ExperimentConfig();
+    /**
+     * Esperimentu osoa exekutatzen du: datuak kargatu, partitu, bektorizazio
+     * mota, hitz kopurua eta ridge parametroa aztertu, eta konfigurazio
+     * optimoa itzuli.
+     *
+     * @param hamDirektorioa  ham mezuak dituen karpeta
+     * @param spamDirektorioa spam mezuak dituen karpeta
+     * @return ExperimentoKonfigurazioa objektua, konfigurazio onenarekin
+     * @throws Exception irakurketa, filtro edo ebaluazio erroreak gertatuz gero
+     */
+    public ExperimentoKonfigurazioa runTuningPipeline(String hamDirektorioa, String spamDirektorioa ) throws Exception {
+    	ExperimentoKonfigurazioa konfigurazioa = new ExperimentoKonfigurazioa();
 
-        // 1. Cargar datos
-        System.out.println("Cargando correos...");
-        List<Email> allEmails = new ArrayList<>();
-        loadEmails(hamFolder, "ham", allEmails);
-        loadEmails(spamFolder, "spam", allEmails);
+        System.out.println("Posta elektronikoak kargatzen...");
+        List<Email> emailGuztiak = new ArrayList<>();
+        emailakKargatu(hamDirektorioa, "ham", emailGuztiak);
+        emailakKargatu(spamDirektorioa, "spam", emailGuztiak);
 
-        // 2. Dividir en Train y Test (Hold-out estratificado)
         List<Email> trainEmails = new ArrayList<>();
         List<Email> testEmails = new ArrayList<>();
-        splitData(allEmails, trainEmails, testEmails);
+        dataZatitu(emailGuztiak, trainEmails, testEmails);
 
-        // 3. Crear datasets en crudo para Weka
-        config.trainRaw = createInstances(trainEmails, true);
-        config.testRaw = createInstances(testEmails, true);
+        konfigurazioa.trainRaw = instantziakSortu(trainEmails, true);
+        konfigurazioa.testRaw = instantziakSortu(testEmails, true);
 
-        System.out.println("Iniciando Grid Search (10-fold CV) evaluando Vectorización, WordsToKeep y Ridge...\n");
-        System.out.println(String.format("%-15s | %-6s | %-8s | %-9s | %-8s", "Vectorización", "Words", "Ridge", "Dict Size", "F-Measure"));
+        System.out.println("Grid Search abiatzen (10-fold CV) bektorizazioa, WordsToKeep eta Ridge ebaluatzeko...\n");
+        System.out.println(String.format("%-15s | %-6s | %-8s | %-9s | %-8s", "Bektorizazioa", "Hitzak", "Ridge", "Hiztegia", "F-Measure"));
         System.out.println("-------------------------------------------------------------------------");
 
-        double bestFMeasure = -1.0;
-        int spamIndex = config.trainRaw.classAttribute().indexOfValue("spam");
+        double fOnena = -1.0;
+        int spamIndex = konfigurazioa.trainRaw.classAttribute().indexOfValue("spam");
 
-        // 4. GRID SEARCH: Triple bucle anidado
-        for (VectorizationType vecType : VectorizationType.values()) {
-            for (int currentWords : WORDS_TO_KEEP_VALUES) {
-                for (double currentRidge : RIDGE_VALUES) {
+        for (BektorizazioMota bekMota : BektorizazioMota.values()) {
+            for (int hitzak : WORDS_TO_KEEP_BALIOAK) {
+                for (double rOnena : RIDGE_BALIOAK) {
                     
-                    // A. Configurar el Filtro
-                    StringToWordVector tempFilter = new StringToWordVector();
-                    tempFilter.setLowerCaseTokens(true);
-                    tempFilter.setWordsToKeep(currentWords);
-                    tempFilter.setStopwordsHandler(new Rainbow());
-                    tempFilter.setStemmer(new LovinsStemmer());
+                    StringToWordVector iragazkia = new StringToWordVector();
+                    iragazkia.setLowerCaseTokens(true);
+                    iragazkia.setWordsToKeep(hitzak);
+                    iragazkia.setStopwordsHandler(new Rainbow());
+                    iragazkia.setStemmer(new LovinsStemmer());
 
-                    // Configurar según el tipo de vectorización a evaluar
-                    configureVectorization(tempFilter, vecType);
+                    configureVectorization(iragazkia, bekMota);
 
-                    // B. Obtener tamaño exacto del diccionario (Atributos - 1 de la clase)
-                    tempFilter.setInputFormat(config.trainRaw);
-                    Instances filteredTrain = Filter.useFilter(config.trainRaw, tempFilter);
-                    int currentDictSize = filteredTrain.numAttributes() - 1;
+                    iragazkia.setInputFormat(konfigurazioa.trainRaw);
+                    Instances trainIragazita = Filter.useFilter(konfigurazioa.trainRaw, iragazkia);
+                    int hitzKop = trainIragazita.numAttributes() - 1;
 
-                    // C. Configurar el Clasificador Logistic
                     Logistic tempLogistic = new Logistic();
-                    tempLogistic.setOptions(new String[]{"-R", String.valueOf(currentRidge), "-M", "500"});
+                    tempLogistic.setOptions(new String[]{"-R", String.valueOf(rOnena), "-M", "500"});
 
-                    // D. Encapsular para SOLUCIONAR EL TEST-BLIND
                     FilteredClassifier tempFc = new FilteredClassifier();
-                    tempFc.setFilter(tempFilter);
+                    tempFc.setFilter(iragazkia);
                     tempFc.setClassifier(tempLogistic);
 
-                    // E. Evaluar con Validación Cruzada sobre el TRAIN
-                    Evaluation cvEval = new Evaluation(config.trainRaw);
-                    cvEval.crossValidateModel(tempFc, config.trainRaw, 10, new Random(RANDOM_SEED));
+                    Evaluation cvEval = new Evaluation(konfigurazioa.trainRaw);
+                    cvEval.crossValidateModel(tempFc, konfigurazioa.trainRaw, 10, new Random(RANDOM_HAZIA));
 
                     double fMeasureSpam = cvEval.fMeasure(spamIndex);
                     
                     System.out.println(String.format("%-15s | %6d | %8.1e | %9d | %8.4f", 
-                            vecType.name(), currentWords, currentRidge, currentDictSize, fMeasureSpam));
+                    		bekMota.name(), hitzak, rOnena, hitzKop, fMeasureSpam));
 
-                    // F. Guardar la mejor configuración
-                    if (fMeasureSpam > bestFMeasure) {
-                        bestFMeasure = fMeasureSpam;
-                        config.bestRidge = currentRidge;
-                        config.bestWordsToKeep = currentWords;
-                        config.bestVecType = vecType;
-                        config.finalDictionarySize = currentDictSize;
-                        config.bestFilter = tempFilter; 
+                    if (fMeasureSpam > fOnena) {
+                    	fOnena = fMeasureSpam;
+                    	konfigurazioa.ridgeOnena = rOnena;
+                    	konfigurazioa.wordsToKeepOnena = hitzak;
+                    	konfigurazioa.bektorizazioMotaOnena = bekMota;
+                        konfigurazioa.hiztegiHitzKopurua = hitzKop;
+                        konfigurazioa.iragazkiOnena = iragazkia; 
                     }
                 }
             }
         }
 
-        System.out.println("\n=== MEJOR CONFIGURACIÓN ENCONTRADA (Evidencia Empírica) ===");
-        System.out.println("Tipo Vectorización: " + config.bestVecType);
-        System.out.println("WordsToKeep limit: " + config.bestWordsToKeep);
-        System.out.println("Tamaño Real del Diccionario: " + config.finalDictionarySize + " atributos");
-        System.out.println("Ridge (Regularización): " + config.bestRidge);
-        System.out.println("Mejor F-Measure CV: " + bestFMeasure + "\n");
+        System.out.println("\n=== AURKITUTAKO KONFIGURAZIO ONENA (Ebidentzia Enpirikoa) ===");
+        System.out.println("Bektorizazio mota: " + konfigurazioa.bektorizazioMotaOnena);
+        System.out.println("WordsToKeep muga: " + konfigurazioa.wordsToKeepOnena);
+        System.out.println("Hiztegiaren benetako tamaina: " + konfigurazioa.hiztegiHitzKopurua + " atributu");
+        System.out.println("Ridge (Erregulazioa): " + konfigurazioa.ridgeOnena);
+        System.out.println("F-Measure (CV) hoberena: " + fOnena + "\n");
 
-        return config;
+        return konfigurazioa;
     }
 
     /**
-     * Aplica la configuración matemática y de tokenización según el tipo escogido.
+     * StringToWordVector iragazkia konfiguratzen du bektorizazio motaren arabera.
+     * <p>
+     * Lau kasu: binarioa (presencia/ausencia), TF (maiztasuna), TF‑IDF,
+     * eta TF‑IDF unigramak+bigramak erabiliz.
+     * </p>
+     *
+     * @param iragazkia konfiguratu beharreko iragazkia
+     * @param mota   bektorizazio mota (BINARY, TF, TF_IDF, TF_IDF_BIGRAMS)
      */
-    private void configureVectorization(StringToWordVector filter, VectorizationType type) {
-        switch (type) {
+    private void configureVectorization(StringToWordVector iragazkia, BektorizazioMota mota) {
+        switch (mota) {
             case BINARY:
-                filter.setOutputWordCounts(false);
-                filter.setTFTransform(false);
-                filter.setIDFTransform(false);
-                filter.setTokenizer(new WordTokenizer());
+            	iragazkia.setOutputWordCounts(false);
+            	iragazkia.setTFTransform(false);
+            	iragazkia.setIDFTransform(false);
+            	iragazkia.setTokenizer(new WordTokenizer());
                 break;
             case TF:
-                filter.setOutputWordCounts(true);
-                filter.setTFTransform(true);
-                filter.setIDFTransform(false);
-                filter.setTokenizer(new WordTokenizer());
+            	iragazkia.setOutputWordCounts(true);
+            	iragazkia.setTFTransform(true);
+            	iragazkia.setIDFTransform(false);
+            	iragazkia.setTokenizer(new WordTokenizer());
                 break;
             case TF_IDF:
-                filter.setOutputWordCounts(true);
-                filter.setTFTransform(true);
-                filter.setIDFTransform(true);
-                filter.setTokenizer(new WordTokenizer());
+            	iragazkia.setOutputWordCounts(true);
+            	iragazkia.setTFTransform(true);
+            	iragazkia.setIDFTransform(true);
+            	iragazkia.setTokenizer(new WordTokenizer());
                 break;
             case TF_IDF_BIGRAMS:
-                filter.setOutputWordCounts(true);
-                filter.setTFTransform(true);
-                filter.setIDFTransform(true);
+            	iragazkia.setOutputWordCounts(true);
+            	iragazkia.setTFTransform(true);
+            	iragazkia.setIDFTransform(true);
                 NGramTokenizer tokenizer = new NGramTokenizer();
                 tokenizer.setNGramMinSize(1);
-                tokenizer.setNGramMaxSize(2); // Unigramas y Bigramas
-                filter.setTokenizer(tokenizer);
+                tokenizer.setNGramMaxSize(2); 
+                iragazkia.setTokenizer(tokenizer);
                 break;
         }
     }
 
-    // =========================================================================
-    // MÉTODOS DE UTILIDAD (Carga, Limpieza y Transformación)
-    // =========================================================================
-
-    private void loadEmails(String folder, String label, List<Email> list) throws Exception {
-        File dir = new File(folder);
+    /**
+     * Karpeta batetik .txt fitxategi guztiak irakurtzen ditu eta Email objektu
+     * gisa gordetzen.
+     *
+     * @param direktorioa karpetaren bidea
+     * @param mota  "ham" edo "spam"
+     * @param lista   Email zerrenda non metatuko diren
+     * @throws Exception irakurketa erroreak
+     */
+    private void emailakKargatu(String direktorioa, String mota, List<Email> lista) throws Exception {
+        File dir = new File(direktorioa);
         if (!dir.exists() || !dir.isDirectory()) {
-            System.err.println("La carpeta no existe: " + folder);
+            System.err.println("Karpeta ez da existitzen: " + direktorioa);
             return;
         }
-        File[] files = dir.listFiles((d, name) -> name.endsWith(".txt"));
-        if (files == null) return;
+        File[] fitxategiak = dir.listFiles((d, izena) -> izena.endsWith(".txt"));
+        if (fitxategiak == null) return;
 
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-        for (File f : files) {
-            String content = readFile(f);
-            String name = f.getName();
-            String[] parts = name.split("\\.");
-            String author = (parts.length >= 3) ? parts[2] : "desconocido";
+        for (File f : fitxategiak) {
+            String edukia = fitxategiaIrakurri(f);
+            String izena = f.getName();
+            String[] atalak = izena.split("\\.");
+            String egilea = (atalak.length >= 3) ? atalak[2] : "ezezaguna";
             Date date = null;
-            if (parts.length >= 2) {
-                try { date = sdf.parse(parts[1]); } catch (Exception e) {}
+            if (atalak.length >= 2) {
+                try { date = sdf.parse(atalak[1]); } catch (Exception e) {}
             }
-            content = cleanText(content);
-            list.add(new Email(content, label, author, date));
+            edukia = testuaGarbitu(edukia);
+            lista.add(new Email(edukia, mota, egilea, date));
         }
     }
 
-    private String readFile(File f) throws IOException {
+    /**
+     * Fitxategi bat irakurtzen du eta eduki osoa String gisa itzultzen du.
+     *
+     * @param f irakurri beharreko fitxategia
+     * @return fitxategiaren testua
+     * @throws IOException irakurketa errorea
+     */
+    private String fitxategiaIrakurri(File f) throws IOException {
         StringBuilder sb = new StringBuilder();
         try (BufferedReader br = new BufferedReader(new FileReader(f))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                sb.append(line).append("\n");
+            String lerroa;
+            while ((lerroa = br.readLine()) != null) {
+                sb.append(lerroa).append("\n");
             }
         }
         return sb.toString();
     }
 
-    private String cleanText(String text) {
-        text = text.replaceAll("\\S+@\\S+\\.\\S+", " ");
-        text = text.replaceAll("(http|https)://\\S+", " ");
-        text = text.replaceAll("\\b\\d+\\b", " ");
-        text = text.replaceAll("[^a-zA-Záéíóúñü' ]", " ");
-        text = text.toLowerCase();
-        return text.replaceAll("\\s+", " ").trim();
+    /**
+     * Testua garbitzen du: emailak, URLak, zenbakiak, puntuazioa kendu,
+     * minuskula bihurtu eta zuriune anitzak ezabatu.
+     *
+     * @param testua garbitu beharreko testua
+     * @return testu garbia
+     */
+    private String testuaGarbitu(String testua) {
+    	testua = testua.replaceAll("\\S+@\\S+\\.\\S+", " ");
+    	testua = testua.replaceAll("(http|https)://\\S+", " ");
+    	testua = testua.replaceAll("\\b\\d+\\b", " ");
+    	testua = testua.replaceAll("[^a-zA-Záéíóúñü' ]", " ");
+    	testua = testua.toLowerCase();
+        return testua.replaceAll("\\s+", " ").trim();
     }
 
-    private void splitData(List<Email> all, List<Email> train, List<Email> test) {
+    /**
+     * Datak train eta test multzoetan banatzen ditu, klaseen proportzioa
+     * mantenduz (hold‑out estratifikatua).
+     *
+     * @param guztiak   email guztiak
+     * @param train entrenamendurako zerrenda
+     * @param test  test‑erako zerrenda
+     */
+    private void dataZatitu(List<Email> guztiak, List<Email> train, List<Email> test) {
         List<Email> hamList = new ArrayList<>();
         List<Email> spamList = new ArrayList<>();
-        for (Email e : all) {
-            if (e.label.equals("ham")) hamList.add(e);
+        for (Email e : guztiak) {
+            if (e.mota.equals("ham")) hamList.add(e);
             else spamList.add(e);
         }
-        Collections.shuffle(hamList, new Random(RANDOM_SEED));
-        Collections.shuffle(spamList, new Random(RANDOM_SEED));
+        Collections.shuffle(hamList, new Random(RANDOM_HAZIA));
+        Collections.shuffle(spamList, new Random(RANDOM_HAZIA));
         
-        int hamTrainSize = (int) Math.round(hamList.size() * TRAIN_RATIO);
-        int spamTrainSize = (int) Math.round(spamList.size() * TRAIN_RATIO);
+        int hamTrainKop = (int) Math.round(hamList.size() * TRAIN_RATIO);
+        int spamTrainKop = (int) Math.round(spamList.size() * TRAIN_RATIO);
         
-        train.addAll(hamList.subList(0, hamTrainSize));
-        train.addAll(spamList.subList(0, spamTrainSize));
-        test.addAll(hamList.subList(hamTrainSize, hamList.size()));
-        test.addAll(spamList.subList(spamTrainSize, spamList.size()));
+        train.addAll(hamList.subList(0, hamTrainKop));
+        train.addAll(spamList.subList(0, spamTrainKop));
+        test.addAll(hamList.subList(hamTrainKop, hamList.size()));
+        test.addAll(spamList.subList(spamTrainKop, spamList.size()));
         
-        Collections.shuffle(train, new Random(RANDOM_SEED));
-        Collections.shuffle(test, new Random(RANDOM_SEED));
+        Collections.shuffle(train, new Random(RANDOM_HAZIA));
+        Collections.shuffle(test, new Random(RANDOM_HAZIA));
     }
 
-    private Instances createInstances(List<Email> emails, boolean withClass) {
-        ArrayList<Attribute> atts = new ArrayList<>();
-        atts.add(new Attribute("text", (ArrayList<String>) null));
+    /**
+     * Email zerrenda bat Wekako Instances objektu bihurtzen du.
+     * <p>
+     * Bi atributu sortzen ditu: "testua" (String) eta "class" (ham/spam).
+     * </p>
+     *
+     * @param emails    email zerrenda
+     * @param withClass true baldin badu klase atributua jartzen du; bestela dummy bat.
+     * @return Instances objektua
+     */
+    private Instances instantziakSortu(List<Email> emails, boolean withClass) {
+        ArrayList<Attribute> atributuak = new ArrayList<>();
+        atributuak.add(new Attribute("testua", (ArrayList<String>) null));
         
         if (withClass) {
-            ArrayList<String> classValues = new ArrayList<>();
-            classValues.add("ham");
-            classValues.add("spam");
-            atts.add(new Attribute("class", classValues));
+            ArrayList<String> klaseBalioak = new ArrayList<>();
+            klaseBalioak.add("ham");
+            klaseBalioak.add("spam");
+            atributuak.add(new Attribute("klasea", klaseBalioak));
         } else {
-            ArrayList<String> dummy = new ArrayList<>();
-            dummy.add("?");
-            atts.add(new Attribute("class", dummy));
+            ArrayList<String> lista = new ArrayList<>();
+            lista.add("?");
+            atributuak.add(new Attribute("klasea", lista));
         }
         
-        Instances data = new Instances("emails", atts, emails.size());
+        Instances data = new Instances("klasea", atributuak, emails.size());
         data.setClassIndex(data.numAttributes() - 1);
 
         for (Email e : emails) {
             double[] vals = new double[data.numAttributes()];
-            vals[0] = data.attribute(0).addStringValue(e.text);
-            vals[1] = withClass ? data.attribute(1).indexOfValue(e.label) : 0;
+            vals[0] = data.attribute(0).addStringValue(e.testua);
+            vals[1] = withClass ? data.attribute(1).indexOfValue(e.mota) : 0;
             data.add(new DenseInstance(1.0, vals));
         }
         return data;

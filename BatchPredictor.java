@@ -20,15 +20,15 @@ import java.util.ArrayList;
 public class BatchPredictor {
 
     public static void main(String[] args) {
-        if (args.length != 4) {
-            System.err.println("Uso: java BatchPredictor <folder_ham> <folder_spam> <modelo.model> <predicciones.txt>");
+        if (args.length != 3) {
+            System.err.println("Uso: java BatchPredictor <folder_ham> <folder_spam> <modelo.model>");
             System.exit(1);
         }
 
         String hamFolder = args[0];
         String spamFolder = args[1];
         String modelPath = args[2];
-        String outputPath = args[3];
+        String outputPath = "iragarpenak.txt";
 
         try {
             System.out.println("Cargando modelo...");

@@ -50,9 +50,9 @@ public class KalitateEstimatzailea {
             Instances trainData = createInstances(trainList);
             Instances testData = createInstances(testList);
 
-            System.out.println("3. Iragazki zentralizatua eskatuz NLPFilterFactory-ri...");
+            System.out.println("3. Iragazki zentralizatua eskatuz IragazkiSortzaileari...");
             FilteredClassifier fC = new FilteredClassifier();
-            fC.setFilter(NLPFilterFactory.createSpamFilter(wordsToKeepOnena));
+            fC.setFilter(IragazkiSortzailea.sortuSpamIragazkia(wordsToKeepOnena));
 
             Logistic logistic = new Logistic();
             logistic.setOptions(new String[]{"-R", String.valueOf(RidgeOnena), "-M", "500"});

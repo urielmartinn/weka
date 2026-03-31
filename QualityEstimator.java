@@ -19,7 +19,7 @@ import java.util.Random;
 
 /**
  * Clase 2: Ejecutable independiente para la estimación empírica (Hold-out).
- * Argumentos CLI: <ham_folder> <spam_folder> <output_report.txt>
+ * Argumentos CLI: <ham_folder> <spam_folder> 
  */
 public class QualityEstimator {
 
@@ -28,13 +28,13 @@ public class QualityEstimator {
 
     public static void main(String[] args) {
         if (args.length != 2) {
-            System.err.println("Uso: java QualityEstimator <ruta_carpeta_ham>");
+            System.err.println("Uso: java QualityEstimator <ruta_carpeta_ham> <ruta_carpeta_spam>");
             System.exit(1);
         }
 
         String hamFolder = args[0];
         String spamFolder = args[1];
-        String reportPath = "estimazioa.txt"; // Ruta del txt de salida
+        String reportPath = "estimazioa.txt";
 
         double bestRidge = 10.0;
         int bestWordsToKeep = 1000;
@@ -55,7 +55,7 @@ public class QualityEstimator {
 
             System.out.println("3. Solicitando filtro centralizado a NLPFilterFactory...");
             FilteredClassifier fc = new FilteredClassifier();
-            fc.setFilter(NLPFilterFactory.createSpamFilter(bestWordsToKeep)); // Llamada a la nueva clase
+            fc.setFilter(NLPFilterFactory.createSpamFilter(bestWordsToKeep));
 
             Logistic logistic = new Logistic();
             logistic.setOptions(new String[]{"-R", String.valueOf(bestRidge), "-M", "500"});
@@ -70,10 +70,10 @@ public class QualityEstimator {
 
             System.out.println("6. Guardando estimación de calidad en disco...");
             saveQualityReport(reportPath, eval, bestRidge, bestWordsToKeep);
-            System.out.println("✅ Reporte guardado con éxito en: " + reportPath);
+            System.out.println("Reporte guardado con éxito en: " + reportPath);
 
         } catch (Exception e) {
-            System.err.println("❌ Error en la evaluación: " + e.getMessage());
+            System.err.println("Error en la evaluación: " + e.getMessage());
             e.printStackTrace();
         }
     }

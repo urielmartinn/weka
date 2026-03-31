@@ -1,3 +1,5 @@
+package Proiektua;
+
 import weka.classifiers.Classifier;
 import weka.core.Attribute;
 import weka.core.DenseInstance;
@@ -6,7 +8,7 @@ import weka.core.SerializationHelper;
 import java.util.ArrayList;
 
 
-public class ErabiltzaileSpamIragarpena {
+public class SpamPredictorUser {
 
    
     public static void main(String[] args) {
@@ -15,58 +17,52 @@ public class ErabiltzaileSpamIragarpena {
             return;
         }
 
-        String modelPath = args[0];
-        String rawText = args[1]; 
+        String modeloIbilbidea = args[0];
+        String testuGordina = args[1]; 
 
         try {
-            // 1. Cargar el modelo empaquetado (FilteredClassifier)
-            Classifier model = (Classifier) SerializationHelper.read(modelPath);
+           
+            Classifier model = (Classifier) SerializationHelper.read(modeloIbilbidea);
 
-            // 2. Recrear la estructura de datos EXACTA que usamos en el entrenamiento
-            // Atributo 0: Texto (String)
             ArrayList<Attribute> atts = new ArrayList<>();
             atts.add(new Attribute("text", (ArrayList<String>) null));
             
-            // Atributo 1: Clase (Nominal: ham, spam)
             ArrayList<String> classValues = new ArrayList<>();
             classValues.add("ham");
             classValues.add("spam");
             atts.add(new Attribute("class", classValues));
 
-            // Crear el dataset vacío
             Instances dataset = new Instances("EmailsPrediction", atts, 1);
             dataset.setClassIndex(dataset.numAttributes() - 1);
 
-            // 3. Crear una nueva instancia con el texto del cliente
-            DenseInstance newInstance = new DenseInstance(2);
-            // Aplicamos una limpieza básica rápida (la misma que en train)
-            String cleanText = cleanTextForPrediction(rawText);
+            DenseInstance InstanceBerria = new DenseInstance(2);
             
-            newInstance.setValue(atts.get(0), cleanText);
-            // La clase es desconocida (?), por lo que no la seteamos
-            newInstance.setDataset(dataset);
-            dataset.add(newInstance);
+            String testuGarbia = cleanTextForPrediction(testuGordina);
+            
+            InstanceBerria.setValue(atts.get(0), testuGarbia);
+           
+            InstanceBerria.setDataset(dataset);
+            dataset.add(InstanceBerria);
 
-            // 4. Realizar la predicción "on-the-fly"
-            // El FilteredClassifier vectorizará el texto automáticamente usando el diccionario guardado
-            double predictionIndex = model.classifyInstance(dataset.instance(0));
-            String predictedLabel = dataset.classAttribute().value((int) predictionIndex);
+           
+            double iragarpenIndizea = model.classifyInstance(dataset.instance(0));
+            String iragarpenEtiketa = dataset.classAttribute().value((int) iragarpenIndizea);
 
-            // 5. Mostrar el resultado final al usuario
+           
             System.out.println("--------------------------------------------------");
-            System.out.println("Texto analizado: " + rawText);
-            System.out.println("PREDICCIÓN: -> " + predictedLabel.toUpperCase() + " <-");
+            System.out.println("Aztertutako testua: " + testuGordina);
+            System.out.println("IRAGARPENA: -> " + iragarpenEtiketa.toUpperCase() + " <-");
             System.out.println("--------------------------------------------------");
 
         } catch (Exception e) {
-            System.err.println("Error al procesar la predicción: " + e.getMessage());
+            System.err.println("Iragarpena prozesatzean errorea! " + e.getMessage());
             e.printStackTrace();
         }
     }
 
     
     private static String cleanTextForPrediction(String text) {
-        // Eliminar emails, URLs, números, signos de puntuación
+        
         text = text.replaceAll("\\S+@\\S+\\.\\S+", " ");
         text = text.replaceAll("(http|https)://\\S+", " ");
         text = text.replaceAll("\\b\\d+\\b", " ");
@@ -76,5 +72,4 @@ public class ErabiltzaileSpamIragarpena {
         return text;
     }
 }
-
 

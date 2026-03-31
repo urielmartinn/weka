@@ -63,11 +63,8 @@ public class ErabiltzaileSpamIragarpena {
             double iragarpenIndizea = model.classifyInstance(dataset.instance(0));
             String iragarpenEtiketa = dataset.classAttribute().value((int) iragarpenIndizea);
 
-            
-            System.out.println("--------------------------------------------------");
-            System.out.println("Aztertutako testua: " + testuGordina);
-            System.out.println("IRAGARPENA: -> " + iragarpenEtiketa.toUpperCase() + " <-");
-            System.out.println("--------------------------------------------------");
+            String testuEscapatua = testuGordina.replace("\\\"", "\\\\\"");
+            System.out.println(iragarpenEtiketa + ", \"" + testuEscapatua + "\"");
 
         } catch (Exception e) {
             System.err.println("Iragarpena prozesatzean errorea! " + e.getMessage());

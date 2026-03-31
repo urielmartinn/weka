@@ -8,7 +8,7 @@ import weka.core.SerializationHelper;
 import java.util.ArrayList;
 
 
-public class SpamPredictorUser {
+public class ErabiltzaileSpamIragarpena {
 
    
     public static void main(String[] args) {

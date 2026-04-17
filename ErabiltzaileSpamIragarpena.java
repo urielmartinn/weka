@@ -1,4 +1,4 @@
-package Proiektua;
+package proiektua;
 
 import weka.classifiers.Classifier;
 import weka.core.Attribute;

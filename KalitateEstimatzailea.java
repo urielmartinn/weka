@@ -1,4 +1,4 @@
-package Proiektua;
+package proiektua;
 
 import weka.classifiers.Evaluation;
 import weka.classifiers.functions.Logistic;
